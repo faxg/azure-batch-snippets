@@ -2,7 +2,7 @@
 
 ## Prerequisites
 1. Azure subscription with **Owner** or **Contributor** permissions
-2. Azure CLI installed (`az --version` ≥ 2.57.0)
+2. Azure CLI installed (`az --version` ≥ 2.57.0). Or use the Cloud shell in the Azure portal.
 3. Existing resource group in `switzerlandnorth` called `PrepGroup`
 4. Prepared Ubuntu 20.04 VM in `switzerlandnorth` with:
    - Required libraries installed
