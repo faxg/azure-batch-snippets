@@ -4,14 +4,13 @@
 1. Azure subscription with **Owner** or **Contributor** permissions
 2. Azure CLI installed (`az --version` ≥ 2.57.0). Or use the Cloud shell in the Azure portal.
 3. Existing resource group in `switzerlandnorth` called `PrepGroup`
-4. Prepared Ubuntu 20.04 VM in `switzerlandnorth` with:
+4. Prepared Ubuntu 20.04 VM in `switzerlandnorth` named `SourceVM` with:
    - Required libraries installed
    - Azure Linux Agent (waagent) configured
    - No sensitive data (already deprovisioned if needed)
 5. Storage account in `switzerlandnorth` with:
    - Azure File share named `batchdata`
-   - Python scripts uploaded to `scripts/` directory
-   - Input data in `inputs/` directory
+   - Python scripts and data uploaded to `scripts/` directory
 
 ---
 
@@ -93,7 +92,7 @@ az storage share create
 ```bash
 az storage file upload-batch
 --destination batchdata
---source ./local_scripts
+--source ./scripts
 --account-name chbatchstorage
 --destination-path scripts/
 ```
@@ -103,18 +102,22 @@ az storage file upload-batch
 ## 3. Configure Batch Account
 
 ### 3.1 Create Batch Account
-```batch
-az batch account create
---name chbatch
---resource-group PrepGroup
---location switzerlandnorth
---identity-type SystemAssigned
+```bash
+az batch account create \
+--name chbatch \
+--resource-group PrepGroup \
+--location switzerlandnorth \
+
+az batch account identity assign \
+  --name chbatch \
+  --resource-group PrepGroup \
+  --system-assigned
 ```
 
 
 ### 3.2 Grant Image Access
 #### Get managed identity ID
-Note: A Service Principal (SP) in Microsoft Entra ID is like a special account that lets an application or service access resources securely. Think of it as a "login" for apps—instead of using a regular user account, apps use a Service Principal to authenticate and get permissions to do things like read data or interact with other services. 
+Note: A Service Principal (SP) in Microsoft Entra ID is like a special account that lets an application or service access resources securely. Think of it as a "login" for apps - but instead of using a regular user account, apps use a Service Principal to authenticate and get permissions to do things like read data or interact with other services. 
 A "Managed Identity" is essentially  a special kind of Service Principal, so you don't need to manually handle credentials or secrets.
 
 ```bash
@@ -126,9 +129,9 @@ batch_sp=$(az batch account show -n chbatch -g PrepGroup --query identity.princi
 ```bash
 gallery_id=$(az sig show -g PrepGroup --gallery-name CHGallery --query id -o tsv)
 
-az role assignment create
---assignee $batch_sp
---role Reader
+az role assignment create \
+--assignee $batch_sp \
+--role Reader \
 --scope $gallery_id
 ```
 
@@ -139,25 +142,27 @@ az role assignment create
 
 ### 4.1 Generate Pool Config
 Create a `pool-config.json` file with this content (substitute subscription Ids and names):
+Check for available VM SKUs: `az batch location list-skus   --location "switzerlandnorth"   --query "[].name"`
+Make sure the `vmSize` is compatible with `Gen2` Hypervisors
 
 ```json
 {
 "id": "MiniPool",
-"vmSize": "Standard_B1s",
+"vmSize": "Standard_D2s_v3",
 "virtualMachineConfiguration": {
-"imageReference": {
-"id": "/subscriptions/{sub-id}/resourceGroups/PrepGroup/providers/Microsoft.Compute/galleries/CHGallery/images/UbuntuBatch/versions/1.0.0"
-},
-"nodeAgentSkuId": "batch.node.ubuntu 20.04"
+  "imageReference": {
+    "virtualMachineImageId": "/subscriptions/{sub-id}/resourceGroups/PrepGroup/providers/Microsoft.Compute/galleries/CHGallery/images/UbuntuBatch/versions/1.0.0"
+   },
+"nodeAgentSKUId": "batch.node.ubuntu 20.04"
 },
 "targetDedicatedNodes": 2,
 "mountConfiguration": [{
-"azureFileShareConfiguration": {
-"accountName": "chbatchstorage",
-"azureFileUrl": "https://chbatchstorage.file.core.windows.net/batchdata",
-"accountKey": "$(az storage account keys list --account-name chbatchstorage --query .value -o tsv)",
-"relativeMountPath": "mnt/data"
-}
+  "azureFileShareConfiguration": {
+    "accountName": "chbatchstorage",
+    "azureFileUrl": "https://chbatchstorage.file.core.windows.net/batchdata",
+    "accountKey": "$(az storage account keys list --account-name chbatchstorage --query [0].value -o tsv)",
+    "relativeMountPath": "mnt/data"
+  }
 }]
 }
 ```
@@ -166,10 +171,10 @@ Create a `pool-config.json` file with this content (substitute subscription Ids 
 ### 4.2 Create Pool
 
 ```bash
-az batch pool create
---json-file pool-config.json
---account-name chbatch
---resource-group PrepGroup
+az batch pool create \
+--json-file pool-config.json \
+--account-name chbatch \
+--account-endpoint "chbatch.switzerlandnorth.batch.azure.com"
 ```
 
 
@@ -179,11 +184,11 @@ az batch pool create
 
 ### 5.1 Create Job
 ```bash
-az batch job create
---id DataProcessingJob
---pool-id MiniPool
---account-name chbatch
---resource-group PrepGroup
+az batch job create \
+--id DataProcessingJob \
+--pool-id MiniPool \
+--account-name chbatch \
+--account-endpoint "chbatch.switzerlandnorth.batch.azure.com"
 ```
 
 
@@ -191,13 +196,14 @@ az batch job create
 
 ```bash
 for i in {1..3}; do
-az batch task create
---job-id DataProcessingJob
---task-id task$i
---command-line "/bin/bash -c 'python3 /mnt/data/scripts/process.py --input /mnt/data/inputs/input${i}.csv --output /mnt/data/outputs/result${i}.txt'"
---account-name chbatch
---resource-group PrepGroup
+  az batch task create \
+    --job-id DataProcessingJob \
+    --task-id task$i \
+    --command-line "/bin/bash -c 'python3 /mnt/data/scripts/process.py --input /mnt/data/scripts/input${i}.csv --output /mnt/data/outputs/result${i}.txt'" \
+    --account-name chbatch \
+    --account-endpoint "chbatch.switzerlandnorth.batch.azure.com"
 done
+
 ```
 
 
@@ -208,40 +214,45 @@ done
 
 1. Check pool allocation:
 ```bash
-az batch pool show --pool-id MiniPool
---query "allocationState"
---account-name chbatch
+az batch pool show --pool-id MiniPool \
+--query "allocationState" \
+--account-name chbatch \
+--account-endpoint "chbatch.switzerlandnorth.batch.azure.com"
+```
+
+1.1. Check Nodes starting up correctly (can take a while)
+Also check: https://learn.microsoft.com/en-us/troubleshoot/azure/hpc/batch/azure-batch-node-unusable-state
+
+```bash
+az batch node list --pool-id MiniPool \
+--account-name chbatch \
+--account-endpoint "chbatch.switzerlandnorth.batch.azure.com" \
+--query "[].[state,vmSize]" -o tsv
+
+
 ```
 
 
 2. Monitor task status:
 ```bash
-az batch task list --job-id DataProcessingJob
---query "[].{Task:id, State:state}"
--o table
---account-name chbatch
+az batch task list --job-id DataProcessingJob \
+--query "[].{Task:id, State:state}" \
+-o table \
+--account-name chbatch \
+--account-endpoint "chbatch.switzerlandnorth.batch.azure.com"
 ```
 
 
 3. Retrieve output:
 ```bash
-az storage file download-batch
---source batchdata/outputs
---destination ./results
+az storage file download-batch \
+--source batchdata/outputs \
+--destination ./results \
 --account-name chbatchstorage
 ```
 
 
----
 
-## Key Configuration Details
-
-| Component              | Switzerland North Settings       |
-|------------------------|-----------------------------------|
-| **VM Size**            | Standard_B1s (1 vCPU, 1 GiB RAM) |
-| **Storage Redundancy** | LRS                               |
-| **Image Replication**  | Single region replication         |
-| **Network**            | Default Azure networking          |
 
 ---
 
