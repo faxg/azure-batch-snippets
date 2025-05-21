@@ -2,7 +2,7 @@
 
 ## Prerequisites
 1. Azure subscription with **Owner** or **Contributor** permissions
-2. Azure CLI installed (`az --version` ≥ 2.57.0). Or use the Cloud shell in the Azure portal.
+2. Azure CLI installed (`az --version` ≥ 2.57.0). Or use the Cloud shell in the Azure portal. http://aka.ms/azcli 
 3. Existing resource group in `switzerlandnorth` called `PrepGroup`
 4. Prepared Ubuntu 20.04 VM in `switzerlandnorth` named `SourceVM` with:
    - Required libraries installed
@@ -14,14 +14,22 @@
 
 ---
 
+Azure Node Pools only support "generalized" images, and needs to be compatible. 
+__Important__: Please check compatibility of your VM / image with Azure Batch when creating the machine, as well as your "Quota" which is per Subscription /region:
+
+See: https://learn.microsoft.com/en-us/azure/batch/batch-pool-vm-sizes
+
+
 ## 1. Create Generalized Image
-Azure Node Pools only support "generalized" images.
+
 
 ### 1.1 Prepare Source VM
+__NOTE__ that your generalized image can't be re-started anymore. 
+
 ```bash
-az vm run-command invoke -g PrepGroup -n SourceVM
---command-id RunShellScript
---scripts "sudo waagent -deprovision+user -force"
+az vm run-command invoke -g PrepGroup -n SourceVM \
+--command-id RunShellScript \
+--scripts "sudo waagent -deprovision+user -force" \
 --query "value.message" -o tsv
 
 az vm deallocate -g PrepGroup -n SourceVM --no-wait
@@ -29,39 +37,40 @@ az vm generalize -g PrepGroup -n SourceVM
 
 ```
 
+
 ### 1.2 Create Compute Gallery
 ```bash
-az sig create
---resource-group PrepGroup
---gallery-name CHGallery
+az sig create \
+--resource-group PrepGroup \
+--gallery-name CHGallery \
 --location switzerlandnorth
 ```
 
 
 ### 1.3 Define Image
 ```bash
-az sig image-definition create
---resource-group PrepGroup
---gallery-name CHGallery
---gallery-image-definition UbuntuBatch
---publisher MyOrg
---offer BatchReady
---sku 20.04-LTS
---os-type Linux
---os-state Generalized
---hyper-v-generation V2
+az sig image-definition create \
+--resource-group PrepGroup \
+--gallery-name CHGallery \
+--gallery-image-definition UbuntuBatch \
+--publisher MyOrg \
+--offer BatchReady \
+--sku 22.04-LTS \
+--os-type Linux \
+--os-state Generalized \
+--hyper-v-generation V2 \
 ```
 
 
 ### 1.4 Create Image Version
 
 ```bash
-az sig image-version create
---resource-group PrepGroup
---gallery-name CHGallery
---gallery-image-definition UbuntuBatch
---gallery-image-version 1.0.0
---target-regions switzerlandnorth
+az sig image-version create \
+--resource-group PrepGroup \
+--gallery-name CHGallery \
+--gallery-image-definition UbuntuBatch \
+--gallery-image-version 1.0.0 \
+--target-regions switzerlandnorth \
 --virtual-machine /subscriptions/{sub-id}/resourceGroups/PrepGroup/providers/Microsoft.Compute/virtualMachines/SourceVM
 ```
 
@@ -72,28 +81,28 @@ az sig image-version create
 
 ### 2.1 Create Storage Account
 ```bash
-az storage account create
---name chbatchstorage
---resource-group PrepGroup
---location switzerlandnorth
---sku Standard_LRS
+az storage account create \
+--name chbatchstorage \
+--resource-group PrepGroup \
+--location switzerlandnorth \
+--sku Standard_LRS \
 --allow-blob-public-access false
 ```
 
 
 ### 2.2 Create File Share
 ```bash
-az storage share create
---name batchdata
+az storage share create \
+--name batchdata \
 --account-name chbatchstorage
 ```
 
 ### 2.3 Upload Assets
 ```bash
-az storage file upload-batch
---destination batchdata
---source ./scripts
---account-name chbatchstorage
+az storage file upload-batch \
+--destination batchdata \
+--source ./scripts \
+--account-name chbatchstorage \
 --destination-path scripts/
 ```
 
@@ -153,7 +162,7 @@ Make sure the `vmSize` is compatible with `Gen2` Hypervisors
   "imageReference": {
     "virtualMachineImageId": "/subscriptions/{sub-id}/resourceGroups/PrepGroup/providers/Microsoft.Compute/galleries/CHGallery/images/UbuntuBatch/versions/1.0.0"
    },
-"nodeAgentSKUId": "batch.node.ubuntu 20.04"
+"nodeAgentSKUId": "batch.node.ubuntu 22.04"
 },
 "targetDedicatedNodes": 2,
 "mountConfiguration": [{
@@ -258,6 +267,7 @@ az storage file download-batch \
 
 ## Troubleshooting Checklist
 
+TODO UNDER CONSTRUCTION
 1. **Image Validation**
 
 ```bash
