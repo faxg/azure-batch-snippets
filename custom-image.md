@@ -18,7 +18,9 @@ Azure Node Pools only support "generalized" images, and needs to be compatible.
 __Important__: Please check compatibility of your VM / image with Azure Batch when creating the machine, as well as your "Quota" which is per Subscription /region:
 
 See: https://learn.microsoft.com/en-us/azure/batch/batch-pool-vm-sizes
-
+```bash
+az batch location list-skus --location switzerlandnorth --query "[].name"
+``
 
 ## 1. Create Generalized Image
 
