@@ -20,7 +20,7 @@ __Important__: Please check compatibility of your VM / image with Azure Batch wh
 See: https://learn.microsoft.com/en-us/azure/batch/batch-pool-vm-sizes
 ```bash
 az batch location list-skus --location switzerlandnorth --query "[].name"
-``
+```
 
 ## 1. Create Generalized Image
 
