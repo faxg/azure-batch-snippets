@@ -171,7 +171,7 @@ Make sure the `vmSize` is compatible with `Gen2` Hypervisors
   "azureFileShareConfiguration": {
     "accountName": "chbatchstorage",
     "azureFileUrl": "https://chbatchstorage.file.core.windows.net/batchdata",
-    "accountKey": "$(az storage account keys list --account-name chbatchstorage --query [0].value -o tsv)",
+    "accountKey": "$(az storage account keys list --account-name chbatchstorage --query [0].value -o tsv --only-show-errors)",
     "relativeMountPath": "mnt/data"
   }
 }]
